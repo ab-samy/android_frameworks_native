@@ -316,6 +316,9 @@ status_t Composer::setFlags(const sp<SurfaceComposerClient>& client,
     if (mask & layer_state_t::eLayerHidden) {
         s->what |= layer_state_t::eVisibilityChanged;
     }
+    if (mask & layer_state_t::eLayerTransparent) {
+        s->what |= layer_state_t::eTransparencyChanged;
+    }
     s->flags &= ~mask;
     s->flags |= (flags & mask);
     s->mask |= mask;
@@ -684,6 +687,12 @@ status_t SurfaceComposerClient::getAnimationFrameStats(FrameStats* outStats) {
 
 // ----------------------------------------------------------------------------
 
+#ifndef FORCE_SCREENSHOT_CPU_PATH
+#define SS_CPU_CONSUMER false
+#else
+#define SS_CPU_CONSUMER true
+#endif
+
 status_t ScreenshotClient::capture(
         const sp<IBinder>& display,
         const sp<IGraphicBufferProducer>& producer,
@@ -701,7 +710,7 @@ status_t ScreenshotClient::capture(
 #endif
     return s->captureScreen(display, producer, sourceCrop,
             reqWidth, reqHeight, minLayerZ, maxLayerZ, useIdentityTransform,
-            ISurfaceComposer::eRotateNone, false);
+            ISurfaceComposer::eRotateNone, SS_CPU_CONSUMER);
 }
 
 ScreenshotClient::ScreenshotClient()
