@@ -28,7 +28,13 @@
 #include <ui/PixelFormat.h>
 
 #include <gui/Surface.h>
+#ifdef BOARD_EGL_NEEDS_LEGACY_FB
+#include <ui/FramebufferNativeWindow.h>
+#endif
 
+#include <GLES/gl.h>
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <hardware/gralloc.h>
 
 #include "DisplayHardware/DisplaySurface.h"
@@ -78,7 +84,11 @@ DisplayDevice::DisplayDevice(
       mActiveConfig(0)
 {
     mNativeWindow = new Surface(producer, false);
+#ifndef BOARD_EGL_NEEDS_LEGACY_FB
     ANativeWindow* const window = mNativeWindow.get();
+#else
+    ANativeWindow* const window = new FramebufferNativeWindow();
+#endif
 
     /*
      * Create our display's surface
@@ -261,7 +271,21 @@ void DisplayDevice::swapBuffers(HWComposer& hwc) const {
     if (hwc.initCheck() != NO_ERROR ||
             (hwc.hasGlesComposition(mHwcDisplayId) &&
              (hwc.supportsFramebufferTarget() || mType >= DISPLAY_VIRTUAL))) {
-        EGLBoolean success = eglSwapBuffers(mDisplay, mSurface);
+        EGLBoolean success;
+#ifdef SWAP_BUFFERS_WORKAROUND
+        /* SwapBuffers on Exynos4 might block if called without
+         * any visible regions. This maybe a driver bug which
+         * needs to be investigated. As a workaround, check if
+         * atleast one layer has a visible region before attempting
+         * to call swapBuffers
+         */
+        if (mFlinger->getNumVisibleRegions())
+#endif
+        success = eglSwapBuffers(mDisplay, mSurface);
+#ifdef SWAP_BUFFERS_WORKAROUND
+        else
+            success = 1;
+#endif
         if (!success) {
             EGLint error = eglGetError();
             if (error == EGL_CONTEXT_LOST ||

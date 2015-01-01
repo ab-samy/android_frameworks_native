@@ -447,7 +447,7 @@ void SurfaceFlinger::init() {
         DisplayDevice::DisplayType type((DisplayDevice::DisplayType)i);
         // set-up the displays that are already connected
         if (mHwc->isConnected(i) || type==DisplayDevice::DISPLAY_PRIMARY) {
-#if defined(QCOM_BSP) && !defined(APQ8084)
+#ifdef QCOM_BSP
             // query from hwc if the non-virtual display is secure.
             bool isSecure = mHwc->isSecure(i);;
 #else
@@ -643,7 +643,7 @@ status_t SurfaceFlinger::getDisplayConfigs(const sp<IBinder>& display,
         info.presentationDeadline =
                 hwConfig.refresh - SF_VSYNC_EVENT_PHASE_OFFSET_NS + 1000000;
 
-#if defined(QCOM_BSP) && !defined(APQ8084)
+#ifdef QCOM_BSP
         // set secure info based on the hwcConfig
         info.secure = hwConfig.secure;
 #else
@@ -861,7 +861,7 @@ void SurfaceFlinger::onHotplugReceived(int type, bool connected) {
     if (uint32_t(type) < DisplayDevice::NUM_BUILTIN_DISPLAY_TYPES) {
         Mutex::Autolock _l(mStateLock);
         if (connected) {
-#if defined(QCOM_BSP) && !defined(APQ8084)
+#ifdef QCOM_BSP
             // query from hwc if the connected display is secure
             bool secure = mHwc->isSecure(type);;
 #else
@@ -2099,6 +2099,34 @@ void SurfaceFlinger::doDisplayComposition(const sp<const DisplayDevice>& hw,
     // swap buffers (presentation)
     hw->swapBuffers(getHwComposer());
 }
+
+#ifdef SWAP_BUFFERS_WORKAROUND
+int SurfaceFlinger::getNumVisibleRegions() {
+    HWComposer& hwc(getHwComposer());
+    int visibleRegions = 0;
+    for (size_t dpy=0 ; dpy<mDisplays.size() ; dpy++) {
+        sp<const DisplayDevice> hw(mDisplays[dpy]);
+        const int32_t id = hw->getHwcDisplayId();
+            if (id >= 0) {
+                const Vector< sp<Layer> >& currentLayers(
+                    hw->getVisibleLayersSortedByZ());
+                const size_t count = currentLayers.size();
+                HWComposer::LayerListIterator cur = hwc.begin(id);
+                const HWComposer::LayerListIterator end = hwc.end(id);
+                for (size_t i=0 ; cur!=end && i<count ; ++i, ++cur) {
+                    const sp<Layer>& layer(currentLayers[i]);
+                    const Layer::State& s(layer->getDrawingState());
+                    Rect bounds(s.transform.transform(layer->computeBounds()));
+                    Region visibleRegion;
+                    visibleRegion.set(bounds);
+                    if (!visibleRegion.isEmpty())
+                        visibleRegions++;
+                }
+            }
+    }
+    return visibleRegions;
+}
+#endif
 
 #ifdef QCOM_BSP
 bool SurfaceFlinger::computeTiledDr(const sp<const DisplayDevice>& hw) {
